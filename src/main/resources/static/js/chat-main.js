@@ -37,6 +37,9 @@ let selectedChatId = null;
 /** Type of the open chat: 'CHAT' (one to one) or 'GROUP'. */
 let selectedChatType = null;
 
+/** The chat list as returned by the server. Used to fill the chat header. */
+let chatList = [];
+
 /** Timestamp of the last "user is typing" signal we sent. */
 let lastTypingSentAt = 0;
 
@@ -95,6 +98,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     // load chat history
+    loadChatList();
 });
 
 /* =============================================================================
@@ -189,6 +193,13 @@ function isSocketConnected() {
     return stompClient !== null && stompClient.connected;
 }
 
+/**
+ * Subscribes to the three private queues of the logged-in user.
+ * These carry events from one-to-one chats.
+ */
+function subscribeToUserQueues() {
+    // TODO Yegingi darslarda qilinadi
+}
 
 /**
  * Shows "<name> is typing..." and hides it again after a short pause.
@@ -210,6 +221,64 @@ function onUserTypingReceived(messageDto) {
     }, TYPING_INDICATOR_HIDE_MS);
 }
 
+
+/* =============================================================================
+ * 7. CHAT LIST (left sidebar)
+ * ========================================================================== */
+
+/** Loads the chat list from the server, draws it and subscribes to its topics. */
+async function loadChatList() {
+    try {
+        const page = await apiRequest(`/api/v1/chat?page=1&size=100`);
+        if (!page) {
+            return;
+        }
+        chatList = page.content;
+        renderChatList(chatList);
+
+        if (isSocketConnected()) {
+            subscribeToUserQueues();
+        }
+    } catch (error) {
+        console.error('Could not load the chat list:', error);
+    }
+}
+
+/**
+ * Draws the sidebar. Replaces the whole list at once, which is faster than
+ * inserting the items one by one.
+ *
+ * @param {Array} chats chats to show
+ */
+function renderChatList(chats) {
+    chatListContainer.innerHTML = chats.map(chat => {
+        console.log(chat);
+        const photoUrl = chat.photo?.url || './img/user-def.jpg';
+        const lastMessage = chat.message || {};
+
+        return `
+            <div class="chat-item" id="${chat.id}"
+                 data-chat-type="${chat.chatType}">
+                <div class="chat-avatar">
+                    <img src="${photoUrl}" alt="">
+                </div>
+                <div class="chat-info">
+                    <div class="chat-name">${escapeHtml(chat.name)}</div>
+                    ${lastMessage.content
+            ? `<div class="chat-last-message">${escapeHtml(lastMessage.content)}</div>`
+            : ''}
+                </div>
+                <div class="chat-meta">
+                    ${lastMessage.content
+            ? `<div class="chat-time">${formatDateTime(lastMessage.createdDate)}</div>`
+            : ''}
+                    ${chat.unreadMessageCount
+            ? `<div class="chat-unread">${chat.unreadMessageCount}</div>`
+            : ''}
+                </div>
+            </div>`;
+    }).join('');
+}
 
 /* =============================================================================
  * 20. SMALL UTIL/HELPERS
